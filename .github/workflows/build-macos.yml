@@ -14,10 +14,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-concurrency:
-  group: macos-build-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
@@ -37,6 +33,11 @@ jobs:
         os: [macos-26, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
+    # One group per image: a workflow-level group is shared by every matrix job, so with
+    # cancel-in-progress the jobs would cancel each other.
+    concurrency:
+      group: macos-build-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
 
     env:
       # CMake 4 dropped support for the old cmake_minimum_required versions mozjpeg and td declare.
@@ -156,6 +157,9 @@ jobs:
         run: sh scripts/configure_frameworks.sh
 
       - name: Build the app
+        # The app is built for the runner's own architecture only: the ChatUI module is huge, and
+        # compiling it for two architectures at once exhausts the runner's memory and the compiler
+        # dies without a diagnostic.
         run: |
           set -o pipefail
           xcodebuild \
@@ -166,8 +170,6 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            ARCHS="arm64 x86_64" \
-            ONLY_ACTIVE_ARCH=NO \
             build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | tail -n 200
           STATUS=${PIPESTATUS[0]}
           if [ "$STATUS" != "0" ]; then
