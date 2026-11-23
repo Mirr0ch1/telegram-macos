@@ -26,11 +26,12 @@ jobs:
     name: Build Telegram for macOS (${{ matrix.os }})
     # The native libraries (WebRTC, ffmpeg, ...) are compiled from source; this takes a while.
     strategy:
-      # The macOS runner pool is small and can be busy for a long time, so the build is offered on
-      # two images; whichever finishes first produces the artifact.
+      # The macOS runner pool is small and can be busy for a long time. The build needs the macOS 26
+      # SDK: upstream's TGUIKit uses NSGlassEffectView / NSGlassEffectContainerView, which only
+      # exist there. The macos-15 image ships Xcode 16.4 (macOS 15.5 SDK) and cannot compile it.
       fail-fast: false
       matrix:
-        os: [macos-26, macos-15]
+        os: [macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
 
