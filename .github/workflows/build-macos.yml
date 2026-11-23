@@ -8,6 +8,7 @@ name: Build macOS app
 on:
   push:
     branches:
+      - build/macos-app
       - feature/rich-paste-preserve-composer-text
       - feature/rich-paste-editor-toggle
   pull_request:
