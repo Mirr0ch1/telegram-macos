@@ -123,6 +123,18 @@ jobs:
             echo "Xcode $MAJOR builds the project as is"
           fi
 
+      - name: Cache the native libraries
+        # The native libraries (WebRTC, ffmpeg, the Rust engines) take the longest to build and do
+        # not depend on the app's Swift sources, so they are cached between runs. The build script
+        # checks its own stamp files and skips a library whose outputs are already up to date.
+        uses: actions/cache@v4
+        with:
+          path: |
+            core-xprojects/*/build
+          key: native-libs-${{ runner.os }}-${{ hashFiles('core-xprojects/**/build.sh', 'scripts/framework-inputs.sh', 'scripts/configure_frameworks.sh') }}
+          restore-keys: |
+            native-libs-${{ runner.os }}-
+
       - name: Build the native libraries
         run: sh scripts/configure_frameworks.sh
 
