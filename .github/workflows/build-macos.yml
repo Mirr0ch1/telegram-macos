@@ -27,10 +27,11 @@ jobs:
       # Both need the macOS 26 SDK (see the Xcode selection step).
       fail-fast: false
       matrix:
-        # Both images need the macOS 26 SDK (see the Xcode selection step). The Intel image is NOT
-        # an option: the repository ships an arm64-only `scripts/flatc`, which the native library
-        # build runs.
-        os: [macos-26, macos-15]
+        # Only the macOS 26 image: it has the macOS 26 SDK (see the Xcode selection step) and it
+        # builds the app. The macos-15 image's compiler dies on the ChatUI module without a
+        # diagnostic (it runs out of memory), and the Intel image cannot run the repository's
+        # arm64-only `scripts/flatc`.
+        os: [macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     # One group per image: a workflow-level group is shared by every matrix job, so with
