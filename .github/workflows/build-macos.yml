@@ -23,9 +23,15 @@ permissions:
 
 jobs:
   build:
-    name: Build Telegram for macOS
+    name: Build Telegram for macOS (${{ matrix.os }})
     # The native libraries (WebRTC, ffmpeg, ...) are compiled from source; this takes a while.
-    runs-on: macos-15
+    strategy:
+      # The macOS runner pool is small and can be busy for a long time, so the build is offered on
+      # two images; whichever finishes first produces the artifact.
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 360
 
     env:
