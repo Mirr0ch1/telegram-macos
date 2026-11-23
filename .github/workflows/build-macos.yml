@@ -61,8 +61,33 @@ jobs:
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-version
 
-      - name: Prepare the build environment
-        run: sh scripts/setup_build_env.sh
+      - name: Install the build dependencies
+        # `scripts/setup_build_env.sh` installs `openssl@1.1` from Homebrew, which Homebrew has
+        # since removed. The project builds its own OpenSSL 1.1.1 from
+        # `core-xprojects/openssl/OpenSSLEncryption`, so the brew package is not needed here.
+        run: |
+          set -euo pipefail
+          brew install cmake ninja meson nasm yasm zlib autoconf libtool automake pkg-config
+          if [ "$(uname -m)" = "arm64" ]; then
+            arch -x86_64 /usr/bin/true >/dev/null 2>&1 || softwareupdate --install-rosetta --agree-to-license
+          fi
+
+      - name: Initialise the git submodules
+        run: git submodule update --init --recursive
+
+      - name: Patch the sources for the current toolchain
+        # Recent clang hard-errors on `[[clang::lifetimebound]]` applied to a parameter of a
+        # void-returning function (tg_owt's abseil copy). This is the same patch
+        # `scripts/setup_build_env.sh` applies; it is a static-analysis annotation only.
+        run: |
+          set -euo pipefail
+          ATTRS="submodules/tg_owt/src/third_party/abseil-cpp/absl/base/attributes.h"
+          if [ -f "$ATTRS" ]; then
+            /usr/bin/sed -i '' \
+              -e 's|^#define ABSL_ATTRIBUTE_LIFETIME_BOUND \[\[clang::lifetimebound\]\]|#define ABSL_ATTRIBUTE_LIFETIME_BOUND|' \
+              -e 's|^#define ABSL_ATTRIBUTE_LIFETIME_BOUND __attribute__((lifetimebound))|#define ABSL_ATTRIBUTE_LIFETIME_BOUND|' \
+              "$ATTRS"
+          fi
 
       - name: Apply the Xcode 27 deployment-target patch when needed
         run: |
