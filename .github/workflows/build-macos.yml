@@ -26,19 +26,18 @@ jobs:
     name: Build Telegram for macOS (${{ matrix.os }})
     # The native libraries (WebRTC, ffmpeg, ...) are compiled from source; this takes a while.
     strategy:
-      # The macOS runner pool is small and can be busy for a long time. The build needs the macOS 26
-      # SDK: upstream's TGUIKit uses NSGlassEffectView / NSGlassEffectContainerView, which only
-      # exist there. The macos-15 image ships Xcode 16.4 (macOS 15.5 SDK) and cannot compile it.
+      # The macOS runner pool is small and can be busy for a long time, and the arm64 capacity is
+      # tight, so the build is offered on two images; whichever finishes first produces the artifact.
+      # Both need the macOS 26 SDK (see the Xcode selection step).
       fail-fast: false
       matrix:
-        os: [macos-26]
+        os: [macos-26, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
 
     env:
       # CMake 4 dropped support for the old cmake_minimum_required versions mozjpeg and td declare.
       CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
 
     steps:
       - name: Check out the sources
@@ -57,8 +56,16 @@ jobs:
           git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
 
       - name: Select the Xcode version to build with
+        # The NEWEST Xcode on the image, not the default one: upstream's TGUIKit uses
+        # NSGlassEffectView, which needs the macOS 26 SDK, and the image's default Xcode may still
+        # be an older one (16.4 on macos-15) that cannot compile it.
         run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          NEWEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$NEWEST" ]; then
+            NEWEST=/Applications/Xcode.app
+          fi
+          echo "DEVELOPER_DIR=$NEWEST/Contents/Developer" >> "$GITHUB_ENV"
+          sudo xcode-select -s "$NEWEST/Contents/Developer"
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-version
 
@@ -149,6 +156,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
             build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | tail -n 200
           STATUS=${PIPESTATUS[0]}
           if [ "$STATUS" != "0" ]; then
