@@ -31,10 +31,10 @@ jobs:
       # Both need the macOS 26 SDK (see the Xcode selection step).
       fail-fast: false
       matrix:
-        # The Intel image is a separate runner pool, so it is a way around the arm64 capacity
-        # crunch. The app is built universal (ARCHS below), so the artifact runs natively on Apple
-        # Silicon whichever image produced it.
-        os: [macos-26, macos-15, macos-15-intel]
+        # Both images need the macOS 26 SDK (see the Xcode selection step). The Intel image is NOT
+        # an option: the repository ships an arm64-only `scripts/flatc`, which the native library
+        # build runs.
+        os: [macos-26, macos-15]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
 
