@@ -1,0 +1,113 @@
+name: Build macOS app
+
+# Builds Telegram for macOS on a GitHub-hosted macOS runner and uploads the .app as an
+# artifact, so a change can be tried on a real Mac without a local checkout.
+#
+# This workflow lives in the fork only: the upstream repository does not accept changes to
+# GitHub automation from contributor pull requests (see CONTRIBUTING.md).
+on:
+  push:
+    branches:
+      - feature/rich-paste-preserve-composer-text
+      - feature/rich-paste-editor-toggle
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Telegram for macOS
+    # The native libraries (WebRTC, ffmpeg, ...) are compiled from source; this takes a while.
+    runs-on: macos-15
+    timeout-minutes: 360
+
+    env:
+      # CMake 4 dropped support for the old cmake_minimum_required versions mozjpeg and td declare.
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@v4
+        with:
+          # The submodules are fetched by the setup script below, which also applies the
+          # source patches the newer toolchains need.
+          submodules: false
+          fetch-depth: 1
+
+      - name: Use HTTPS for the submodule URLs
+        # The submodules are declared with SSH URLs; the runner has no SSH key, so the URLs
+        # are rewritten to HTTPS.
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
+
+      - name: Select the Xcode version to build with
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Prepare the build environment
+        run: sh scripts/setup_build_env.sh
+
+      - name: Apply the Xcode 27 deployment-target patch when needed
+        run: |
+          MAJOR=$(xcodebuild -version | head -1 | sed -E 's/.*Xcode ([0-9]+).*/\1/')
+          echo "Xcode major version: $MAJOR"
+          if [ "$MAJOR" -ge 27 ]; then
+            sh scripts/xcode27.sh apply
+          else
+            echo "Xcode $MAJOR builds the project as is"
+          fi
+
+      - name: Build the native libraries
+        run: sh scripts/configure_frameworks.sh
+
+      - name: Build the app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace Telegram-Mac.xcworkspace \
+            -scheme Telegram \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | tail -n 200
+          STATUS=${PIPESTATUS[0]}
+          if [ "$STATUS" != "0" ]; then
+            echo "xcodebuild failed with status $STATUS" >&2
+            grep -n "error:" "$RUNNER_TEMP/xcodebuild.log" | head -50 >&2 || true
+            exit "$STATUS"
+          fi
+
+      - name: Collect the app bundle
+        run: |
+          APP=$(find "$RUNNER_TEMP/DerivedData/Build/Products" -maxdepth 2 -name "Telegram.app" -print -quit)
+          if [ -z "$APP" ]; then
+            echo "Telegram.app was not produced" >&2
+            find "$RUNNER_TEMP/DerivedData/Build/Products" -maxdepth 2 >&2 || true
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/artifact"
+          # The app bundle is signed ad-hoc below so it can be launched on the user's Mac.
+          codesign --force --deep --sign - "$APP" || true
+          ditto "$APP" "$RUNNER_TEMP/artifact/Telegram.app"
+          tar -C "$RUNNER_TEMP/artifact" -czf "$RUNNER_TEMP/Telegram-macOS-build.tar.gz" Telegram.app
+          ls -lh "$RUNNER_TEMP/Telegram-macOS-build.tar.gz"
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Telegram-macOS-build
+          path: ${{ runner.temp }}/Telegram-macOS-build.tar.gz
+          if-no-files-found: error
+          retention-days: 14
