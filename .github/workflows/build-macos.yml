@@ -80,6 +80,16 @@ jobs:
           git submodule update --init --recursive
           git -C submodules/telegram-ios submodule update --init --recursive
 
+      - name: Cache the Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            ~/.rustup
+          key: rust-${{ runner.os }}-${{ hashFiles('submodules/telegram-ios/third-party/wallet-engine/wallet-engine/rust-toolchain.toml') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
       - name: Install the Rust toolchain
         # The wallet engine and the MTProto engine are Rust libraries.
         run: |
