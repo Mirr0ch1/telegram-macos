@@ -73,7 +73,20 @@ jobs:
           fi
 
       - name: Initialise the git submodules
-        run: git submodule update --init --recursive
+        # The submodules have nested submodules of their own (telegram-ios carries tdlib/td and
+        # the wallet engine), and the native libraries build from those sources — a missing one
+        # leaves the build configuring an empty source directory.
+        run: |
+          git submodule update --init --recursive
+          git -C submodules/telegram-ios submodule update --init --recursive
+
+      - name: Install the Rust toolchain
+        # The wallet engine and the MTProto engine are Rust libraries.
+        run: |
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Patch the sources for the current toolchain
         # Recent clang hard-errors on `[[clang::lifetimebound]]` applied to a parameter of a
