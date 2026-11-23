@@ -156,6 +156,18 @@ jobs:
       - name: Build the native libraries
         run: sh scripts/configure_frameworks.sh
 
+      - name: Save the native libraries
+        # Saved explicitly, and unconditionally: the automatic save of the restore step only
+        # happens when the WHOLE job succeeds, and the app build is the part that gets retried —
+        # so a failed app build would throw away 50 minutes of native library compilation.
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            core-xprojects/*/build
+          key: native-libs-${{ runner.os }}-${{ hashFiles('core-xprojects/**/build.sh', 'scripts/framework-inputs.sh', 'scripts/configure_frameworks.sh') }}
+
       - name: Build the app
         # The app is built for the runner's own architecture only: the ChatUI module is huge, and
         # compiling it for two architectures at once exhausts the runner's memory and the compiler
