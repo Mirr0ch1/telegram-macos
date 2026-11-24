@@ -24,7 +24,15 @@ public final class ApiEnvironment {
             try? FileManager.default.createDirectory(at: containerUrl, withIntermediateDirectories: true, attributes: nil)
             return containerUrl
         }
-        return nil
+        // The app group container is only available to a signature the group authorizes — an ad-hoc
+        // signature (what a CI build can produce) is not authorized for it, and there is then
+        // nowhere to put the account database. Fall back to a per-user directory, so the app can run.
+        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let fallbackUrl = base.appendingPathComponent(bundleId + "/" + prefix)
+        try? FileManager.default.createDirectory(at: fallbackUrl, withIntermediateDirectories: true, attributes: nil)
+        return fallbackUrl
     }
     
     public static func migrate() {
