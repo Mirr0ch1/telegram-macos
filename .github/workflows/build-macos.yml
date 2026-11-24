@@ -170,6 +170,11 @@ jobs:
           key: native-libs-${{ runner.os }}-${{ hashFiles('core-xprojects/**/build.sh', 'scripts/framework-inputs.sh', 'scripts/configure_frameworks.sh') }}
 
       - name: Build the app
+        # The Debug configuration is used on purpose: it is the one that carries the NON-sandbox
+        # entitlements (Telegram-Mac.entitlements), which work with an ad-hoc signature. The
+        # Release configuration asks for the sandbox entitlements, which need a provisioning
+        # profile and therefore cannot be signed on a runner.
+        #
         # The app is built for the runner's own architecture only: the ChatUI module is huge, and
         # compiling it for two architectures at once exhausts the runner's memory and the compiler
         # dies without a diagnostic.
@@ -180,9 +185,13 @@ jobs:
             -scheme Telegram \
             -configuration Debug \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            ENABLE_DEBUG_DYLIB=NO \
             build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | tail -n 200
           STATUS=${PIPESTATUS[0]}
           if [ "$STATUS" != "0" ]; then
@@ -200,8 +209,8 @@ jobs:
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/artifact"
-          # The app bundle is signed ad-hoc below so it can be launched on the user's Mac.
-          codesign --force --deep --sign - "$APP" || true
+          # The app is signed by the build above (ad-hoc identity "-"), so the project's
+          # entitlements are embedded in it. Re-signing it here would strip them again.
           ditto "$APP" "$RUNNER_TEMP/artifact/Telegram.app"
           tar -C "$RUNNER_TEMP/artifact" -czf "$RUNNER_TEMP/Telegram-macOS-build.tar.gz" Telegram.app
           ls -lh "$RUNNER_TEMP/Telegram-macOS-build.tar.gz"
