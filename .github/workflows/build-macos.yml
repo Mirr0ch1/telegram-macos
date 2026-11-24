@@ -212,13 +212,16 @@ jobs:
           # The app is signed by the build above (ad-hoc identity "-"), so the project's
           # entitlements are embedded in it. Re-signing it here would strip them again.
           ditto "$APP" "$RUNNER_TEMP/artifact/Telegram.app"
-          tar -C "$RUNNER_TEMP/artifact" -czf "$RUNNER_TEMP/Telegram-macOS-build.tar.gz" Telegram.app
-          ls -lh "$RUNNER_TEMP/Telegram-macOS-build.tar.gz"
+          # A zip, not a tarball: macOS' Archive Utility expands it natively, and bsdtar refuses to
+          # restore the modification times of a Linux-made tarball onto APFS ("m: Operation not
+          # permitted"), which makes the extraction fail for the user.
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$RUNNER_TEMP/Telegram-macOS-build.zip"
+          ls -lh "$RUNNER_TEMP/Telegram-macOS-build.zip"
 
       - name: Upload the app
         uses: actions/upload-artifact@v4
         with:
           name: Telegram-macOS-build
-          path: ${{ runner.temp }}/Telegram-macOS-build.tar.gz
+          path: ${{ runner.temp }}/Telegram-macOS-build.zip
           if-no-files-found: error
           retention-days: 14
