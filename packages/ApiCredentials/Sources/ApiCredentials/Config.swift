@@ -18,21 +18,43 @@ public final class ApiEnvironment {
     
     
     public static var containerURL: URL? {
-        let appGroupName = ApiEnvironment.group
-        let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)?.appendingPathComponent(prefix)
-        if let containerUrl = containerUrl {
-            try? FileManager.default.createDirectory(at: containerUrl, withIntermediateDirectories: true, attributes: nil)
-            return containerUrl
+        // The app group container is only usable by a signature the group authorizes — an ad-hoc
+        // signature (what a CI build can produce) is not. The URL may still be handed out, but the
+        // directory is then not writable, and the account database has nowhere to go. So the
+        // candidates are probed for write access and the first usable one wins.
+        var candidates: [URL] = []
+        if let groupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: ApiEnvironment.group) {
+            candidates.append(groupUrl.appendingPathComponent(prefix))
         }
-        // The app group container is only available to a signature the group authorizes — an ad-hoc
-        // signature (what a CI build can produce) is not authorized for it, and there is then
-        // nowhere to put the account database. Fall back to a per-user directory, so the app can run.
-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
+        if let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            candidates.append(base.appendingPathComponent(bundleId + "/" + prefix))
         }
-        let fallbackUrl = base.appendingPathComponent(bundleId + "/" + prefix)
-        try? FileManager.default.createDirectory(at: fallbackUrl, withIntermediateDirectories: true, attributes: nil)
-        return fallbackUrl
+        if let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            candidates.append(base.appendingPathComponent(bundleId + "/" + prefix))
+        }
+        for candidate in candidates {
+            if Self.isWritable(candidate) {
+                NSLog("[Telegram] account container: %@", candidate.path)
+                return candidate
+            }
+            NSLog("[Telegram] account container not usable: %@", candidate.path)
+        }
+        NSLog("[Telegram] no usable account container")
+        return nil
+    }
+
+    /// Whether a directory can be created and written to.
+    private static func isWritable(_ url: URL) -> Bool {
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
+            let probe = url.appendingPathComponent(".write-probe")
+            try Data("probe".utf8).write(to: probe)
+            try? FileManager.default.removeItem(at: probe)
+            return true
+        } catch {
+            NSLog("[Telegram] account container not writable: %@ (%@)", url.path, String(describing: error))
+            return false
+        }
     }
     
     public static func migrate() {
