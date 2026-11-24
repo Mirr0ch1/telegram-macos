@@ -60,7 +60,14 @@ private func dictFromLocalization(_ value: Localization) -> [String: String] {
 }
 
 public func applyUILocalization(_ settings: LocalizationSettings) {
-    let primaryLanguage = Language(languageCode: settings.primaryComponent.languageCode, customPluralizationCode: settings.primaryComponent.customPluralizationCode, strings: dictFromLocalization(settings.primaryComponent.localization))
+    // The translations bundled with the build fill the keys the downloaded pack doesn't have yet —
+    // a string added upstream only reaches the packs after the translation platform picks it up.
+    // The pack wins for the keys it does have.
+    var primaryStrings = dictFromLocalization(settings.primaryComponent.localization)
+    for (key, value) in BundledTranslations.strings(for: settings.primaryComponent.languageCode) where primaryStrings[key] == nil {
+        primaryStrings[key] = value
+    }
+    let primaryLanguage = Language(languageCode: settings.primaryComponent.languageCode, customPluralizationCode: settings.primaryComponent.customPluralizationCode, strings: primaryStrings)
     let secondaryLanguage = settings.secondaryComponent != nil ? Language.init(languageCode: settings.secondaryComponent!.languageCode, customPluralizationCode: settings.secondaryComponent!.customPluralizationCode, strings: dictFromLocalization(settings.secondaryComponent!.localization)) : nil
     
     let language = TelegramLocalization(primaryLanguage: primaryLanguage, secondaryLanguage: secondaryLanguage, localizedName: settings.primaryComponent.localizedName)
