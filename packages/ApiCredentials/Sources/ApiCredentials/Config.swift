@@ -18,14 +18,12 @@ public final class ApiEnvironment {
     
     
     public static var containerURL: URL? {
-        // The app group container is only usable by a signature the group authorizes — an ad-hoc
-        // signature (what a CI build can produce) is not. The URL may still be handed out, but the
-        // directory is then not writable, and the account database has nowhere to go. So the
-        // candidates are probed for write access and the first usable one wins.
+        // The account data lives in the app group container, which macOS only lets write to a
+        // signature that group's developer authorized. A build signed with an ad-hoc signature
+        // (what CI can produce) is not authorized for it: the path is handed out all the same, but
+        // writing to it fails, and the app aborts at startup because it has nowhere to put the
+        // account database. So use a private per-user directory instead of the shared one.
         var candidates: [URL] = []
-        if let groupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: ApiEnvironment.group) {
-            candidates.append(groupUrl.appendingPathComponent(prefix))
-        }
         if let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
             candidates.append(base.appendingPathComponent(bundleId + "/" + prefix))
         }
@@ -74,9 +72,10 @@ public final class ApiEnvironment {
     }
     
     public static var legacyContainerURL: URL? {
-        let appGroupName = ApiEnvironment.group
-        let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
-        return containerUrl
+        // This build never used the app group container, so there is no legacy location to migrate
+        // from — and the group container belongs to the officially signed app, which must not be
+        // read from or written to here.
+        return nil
     }
     
     public static var group: String {
